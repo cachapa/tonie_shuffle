@@ -1,0 +1,5 @@
+const email = '';
+const password = '';
+const jwt = '';
+const householdId = '';
+const tonieId = '';
