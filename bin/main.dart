@@ -207,5 +207,5 @@ Future<void> _shuffle(
     TonieGateway gateway, String householdId, Tonie tonie) async {
   tonie = Tonie(tonie.id, tonie.name, tonie.chapters..shuffle());
   await gateway.updateTonie(householdId, tonie);
-  print('Shuffled ${tonie.name}.');
+  print('Shuffled ${tonie.name}');
 }
