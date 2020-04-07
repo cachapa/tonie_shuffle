@@ -3,86 +3,82 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'jwt_utils.dart';
 import 'models.dart';
 
 const endpoint = 'https://api.tonie.cloud/v2';
 
+typedef JwtUpdateCallback = void Function(String jwt);
+
 class TonieGateway {
-  final String jwt;
+  final JwtUpdateCallback onJwtUpdated;
+  final String email;
+  final String password;
+
   final http.Client _client;
 
-  TonieGateway(this.jwt) : _client = http.Client();
+  String _jwt;
 
-  static Future<String> login(String email, String password) async {
-    var response = await _post(http.Client(), 'sessions', {
-      'email': email,
-      'password': password,
-    });
-    return response['jwt'];
-  }
+  TonieGateway(this.onJwtUpdated, this.email, this.password, this._jwt)
+      : _client = http.Client();
 
   Future<List<Household>> getHouseholds() async {
-    var response = await _get(_client, 'households', jwt);
+    var response = await _request('get', 'households');
     return (response as List).map((map) => Household.fromMap(map)).toList();
   }
 
   Future<List<Tonie>> getTonies(String householdId) async {
     var response =
-        await _get(_client, 'households/$householdId/creativetonies', jwt);
+        await _request('get', 'households/$householdId/creativetonies');
     return (response as List).map((map) => Tonie.fromMap(map)).toList();
   }
 
   Future<Tonie> getTonie(String householdId, String tonieId) async {
-    var response = await _get(
-        _client, 'households/$householdId/creativetonies/$tonieId', jwt);
+    var response = await _request(
+        'get', 'households/$householdId/creativetonies/$tonieId');
     return Tonie.fromMap(response);
   }
 
-  Future<void> updateTonie(String householdId, Tonie tonie) async => _patch(
-      _client,
-      'households/$householdId/creativetonies/${tonie.id}',
-      tonie.toMap(),
-      jwt);
+  Future<void> updateTonie(String householdId, Tonie tonie) async => _request(
+        'patch',
+        'households/$householdId/creativetonies/${tonie.id}',
+        tonie.toMap(),
+      );
 
-  static dynamic _get(http.Client client, String path, String jwt) async {
-    var response = await client.get('$endpoint/$path', headers: {
-      HttpHeaders.contentTypeHeader: 'application/json',
-      HttpHeaders.authorizationHeader: 'Bearer $jwt',
-    });
-
-    return _handleResponse(response);
-  }
-
-  static dynamic _post(http.Client client, String path, Map body,
-      [String jwt]) async {
-    var response = await client.post('$endpoint/$path',
-        headers: {
-          HttpHeaders.contentTypeHeader: 'application/json',
-          if (jwt != null) HttpHeaders.authorizationHeader: 'Bearer $jwt',
+  Future<void> _login() async {
+    var response = await _request(
+        'post',
+        'sessions',
+        {
+          'email': email,
+          'password': password,
         },
-        body: jsonEncode(body));
-
-    return _handleResponse(response);
+        true);
+    _jwt = response['jwt'];
+    onJwtUpdated(_jwt);
   }
 
-  static dynamic _patch(
-      http.Client client, String path, Map body, String jwt) async {
-    var response = await client.patch('$endpoint/$path',
-        headers: {
-          HttpHeaders.contentTypeHeader: 'application/json',
-          if (jwt != null) HttpHeaders.authorizationHeader: 'Bearer $jwt',
-        },
-        body: jsonEncode(body));
-
-    return _handleResponse(response);
-  }
-
-  static dynamic _handleResponse(http.Response response) {
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-          '${response.statusCode} ${response.reasonPhrase} ${response.body}');
+  dynamic _request(String method, String path,
+      [Map<String, dynamic> body, bool isLogin = false]) async {
+    if (!isLogin && (_jwt == null || !JwtUtils.isValid(_jwt))) {
+      await _login();
     }
 
-    return jsonDecode(utf8.decode(response.bodyBytes));
+    var request = http.Request(method, Uri.parse('$endpoint/$path'))
+      ..headers.addAll({
+        HttpHeaders.contentTypeHeader: 'application/json',
+        HttpHeaders.authorizationHeader: 'Bearer $_jwt',
+      })
+      ..body = jsonEncode(body);
+    var response = await _client.send(request);
+
+    var responseBody = await response.stream.bytesToString();
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+          '${response.statusCode} ${response.reasonPhrase} $responseBody');
+    }
+
+    return jsonDecode(responseBody);
   }
 }

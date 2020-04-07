@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
@@ -5,10 +6,10 @@ import 'package:tonie_shuffle/models.dart';
 import 'package:tonie_shuffle/tonie_gateway.dart';
 
 const configPath = '.tonie-shuffle';
-const tokenFilename = 'token';
+const tokenFilename = 'credentials';
 
 void main(List<String> arguments) {
-  CommandRunner('tonie-shuffle', 'Utility to manage your Toniebox.')
+  CommandRunner('tonie-shuffle', 'Utility to manage your Toniebox')
     ..addCommand(Login())
     ..addCommand(Logout())
     ..addCommand(ListHouseholds())
@@ -26,7 +27,7 @@ class Login extends Command {
   @override
   final name = 'login';
   @override
-  final description = 'Login to your account.';
+  final description = 'Login to your account';
   @override
   final invocation = 'EMAIL PASSWORD';
 
@@ -42,14 +43,9 @@ class Login extends Command {
     var password = args[1];
 
     try {
-      var jwt = await TonieGateway.login(email, password);
-
-      // Store the jwt in the user's directory
-      var home = Platform.environment['HOME'];
-      Directory('$home/$configPath').createSync();
-      File('$home/$configPath/$tokenFilename').writeAsStringSync(jwt);
-
-      print('Logged in.');
+      // Store the credentials in the user's directory
+      _storeCredentials(email, password);
+      print('Logged in');
     } catch (e) {
       print(e);
       exit(1);
@@ -61,7 +57,7 @@ class Logout extends Command {
   @override
   final name = 'logout';
   @override
-  final description = 'Logout from your account.';
+  final description = 'Logout from your account';
 
   @override
   Future<void> run() async {
@@ -70,7 +66,7 @@ class Logout extends Command {
       var home = Platform.environment['HOME'];
       File('$home/$configPath/$tokenFilename').deleteSync();
 
-      print('Logged out.');
+      print('Logged out');
     } catch (e) {
       print(e);
       exit(1);
@@ -79,27 +75,35 @@ class Logout extends Command {
 }
 
 abstract class TonieCommand extends Command {
+  Map<String, dynamic> credentials;
+
   @override
   Future<void> run() async {
     try {
       // Try to load jwt from disk
       var home = Platform.environment['HOME'];
-      var jwt = File('$home/$configPath/$tokenFilename').readAsStringSync();
-      await runTonie(TonieGateway(jwt));
+      var jsonCredentials =
+          File('$home/$configPath/$tokenFilename').readAsStringSync();
+      credentials = jsonDecode(jsonCredentials);
+      await runTonie(TonieGateway(onJwtUpdated, credentials['email'],
+          credentials['password'], credentials['jwt']));
     } catch (e) {
-      print('Please use the login command to authenticate first.');
+      print('Please use the login command to authenticate first');
       exit(1);
     }
   }
 
   Future<void> runTonie(TonieGateway gateway);
+
+  void onJwtUpdated(String jwt) =>
+      _storeCredentials(credentials['email'], credentials['password'], jwt);
 }
 
 class ListHouseholds extends TonieCommand {
   @override
   final name = 'households';
   @override
-  final description = 'List households.';
+  final description = 'List households';
 
   @override
   Future<void> runTonie(TonieGateway gateway) async {
@@ -119,7 +123,7 @@ class ListTonies extends TonieCommand {
   @override
   final name = 'tonies';
   @override
-  final description = 'List creative tonies.';
+  final description = 'List creative tonies';
   @override
   final invocation = 'HOUSEHOLD_ID';
 
@@ -149,7 +153,7 @@ class ShuffleTonie extends TonieCommand {
   @override
   final name = 'shuffle';
   @override
-  final description = 'Shuffle creative tonie.';
+  final description = 'Shuffle creative tonie';
   @override
   final invocation = 'HOUSEHOLD_ID TONIE_ID';
 
@@ -178,7 +182,7 @@ class AutoShuffle extends TonieCommand {
   @override
   final name = 'autoshuffle';
   @override
-  final description = 'Shuffle all creative tonies whose name ends with "[s]".';
+  final description = 'Shuffle all creative tonies whose name ends with "[s]"';
 
   @override
   Future<void> runTonie(TonieGateway gateway) async {
@@ -189,7 +193,7 @@ class AutoShuffle extends TonieCommand {
         var tonies = await gateway.getTonies(household.id);
         tonies.retainWhere((tonie) => tonie.name.endsWith('[s]'));
         if (tonies.isEmpty) {
-          print('No creative tonies ending with "[s]" found.');
+          print('No creative tonies ending with "[s]" found');
         }
 
         for (var tonie in tonies) {
@@ -201,6 +205,16 @@ class AutoShuffle extends TonieCommand {
       exit(1);
     }
   }
+}
+
+void _storeCredentials(String email, String password, [String jwt]) {
+  var home = Platform.environment['HOME'];
+  Directory('$home/$configPath').createSync();
+  File('$home/$configPath/$tokenFilename').writeAsStringSync(jsonEncode({
+    'email': email,
+    'password': password,
+    'jwt': jwt,
+  }));
 }
 
 Future<void> _shuffle(
