@@ -13,12 +13,19 @@ This project includes a minimal, Dart-native implementation of the Tonies API in
 ## Usage
 
 Start by logging in with your Tonie credentials. Once logged in, a token will be stored under `$HOME/.tonie-shuffle/token` and used for future operations.
+> _Note: The tokens will be stored in plaintext in the `token` file._
 
 ``` shell
 $ tonie-shuffle login your@email.tld passw0rd
 ```
 
-I hope I made the command line interface descriptive enough to be easily understood. Simply run the utility without arguments to get a comprehensive usage description.
+There are multiple commands available, but you probably want to automatically shuffle every Tonie whose name ends with `[s]`:
+
+``` shell
+$ tonie-shuffle autoshuffle
+```
+
+Otherwise, simply run the utility without arguments to get a comprehensive usage description.
 
 ## Setup
 

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
@@ -6,7 +5,7 @@ import 'package:tonie_shuffle/models.dart';
 import 'package:tonie_shuffle/tonie_gateway.dart';
 
 const configPath = '.tonie-shuffle';
-const tokenFilename = 'credentials';
+const tokenFilename = 'token';
 
 void main(List<String> arguments) {
   CommandRunner('tonie-shuffle', 'Utility to manage your Toniebox')
@@ -23,70 +22,15 @@ void main(List<String> arguments) {
     }).whenComplete(() => exit(0));
 }
 
-class Login extends Command {
-  @override
-  final name = 'login';
-  @override
-  final description = 'Login to your account';
-  @override
-  final invocation = 'EMAIL PASSWORD';
-
-  @override
-  Future<void> run() async {
-    var args = argResults.rest;
-    if (args.length != 2) {
-      printUsage();
-      exit(64);
-    }
-
-    var email = args[0];
-    var password = args[1];
-
-    try {
-      // Store the credentials in the user's directory
-      _storeCredentials(email, password);
-      print('Logged in');
-    } catch (e) {
-      print(e);
-      exit(1);
-    }
-  }
-}
-
-class Logout extends Command {
-  @override
-  final name = 'logout';
-  @override
-  final description = 'Logout from your account';
-
-  @override
-  Future<void> run() async {
-    try {
-      // Delete the jwt from the user's directory
-      var home = Platform.environment['HOME'];
-      File('$home/$configPath/$tokenFilename').deleteSync();
-
-      print('Logged out');
-    } catch (e) {
-      print(e);
-      exit(1);
-    }
-  }
-}
-
 abstract class TonieCommand extends Command {
-  Map<String, dynamic> credentials;
-
   @override
   Future<void> run() async {
     try {
       // Try to load jwt from disk
-      var home = Platform.environment['HOME'];
-      var jsonCredentials =
-          File('$home/$configPath/$tokenFilename').readAsStringSync();
-      credentials = jsonDecode(jsonCredentials);
-      await runTonie(TonieGateway(onJwtUpdated, credentials['email'],
-          credentials['password'], credentials['jwt']));
+      final home = Platform.environment['HOME'];
+      final file = File('$home/$configPath/$tokenFilename');
+      final token = file.existsSync() ? file.readAsStringSync() : null;
+      await runTonie(TonieGateway(onTokenUpdated, token));
     } catch (e) {
       print('Please use the login command to authenticate first');
       exit(1);
@@ -95,8 +39,54 @@ abstract class TonieCommand extends Command {
 
   Future<void> runTonie(TonieGateway gateway);
 
-  void onJwtUpdated(String jwt) =>
-      _storeCredentials(credentials['email'], credentials['password'], jwt);
+  void onTokenUpdated(String token) => _store(token);
+}
+
+class Login extends TonieCommand {
+  @override
+  final name = 'login';
+  @override
+  final description = 'Login to your account';
+  @override
+  final invocation = 'EMAIL PASSWORD';
+
+  @override
+  Future<void> runTonie(TonieGateway gateway) async {
+    var args = argResults.rest;
+    if (args.length != 2) {
+      printUsage();
+      exit(64);
+    }
+
+    final username = args[0];
+    final password = args[1];
+
+    try {
+      await gateway.login(username, password);
+      print('Logged in');
+    } catch (e) {
+      print(e);
+      exit(1);
+    }
+  }
+}
+
+class Logout extends TonieCommand {
+  @override
+  final name = 'logout';
+  @override
+  final description = 'Logout from your account';
+
+  @override
+  Future<void> runTonie(TonieGateway gateway) async {
+    try {
+      gateway.logout();
+      print('Logged out');
+    } catch (e) {
+      print(e);
+      exit(1);
+    }
+  }
 }
 
 class ListHouseholds extends TonieCommand {
@@ -207,14 +197,10 @@ class AutoShuffle extends TonieCommand {
   }
 }
 
-void _storeCredentials(String email, String password, [String jwt]) {
+void _store(String token) {
   var home = Platform.environment['HOME'];
   Directory('$home/$configPath').createSync();
-  File('$home/$configPath/$tokenFilename').writeAsStringSync(jsonEncode({
-    'email': email,
-    'password': password,
-    'jwt': jwt,
-  }));
+  File('$home/$configPath/$tokenFilename').writeAsStringSync(token ?? '');
 }
 
 Future<void> _shuffle(

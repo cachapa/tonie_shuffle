@@ -4,20 +4,29 @@ import 'package:tonie_shuffle/tonie_gateway.dart';
 
 import 'config.dart';
 
-void main() {
-  var gateway = TonieGateway((_) {}, email, password, null);
+Future<void> main() async {
+  var gateway = TonieGateway((_) {}, null);
 
-//  group('login', () {
-//    test('login', () async {
-//      await gateway.login(email, password);
-//      expect(gateway..isJwtValid, isTrue);
-//    });
-//  });
+  group('auth', () {
+    test('login', () async {
+      await gateway.login(email, password);
+      expect(gateway.isLoggedIn, isTrue);
+    });
+
+    test('refresh token', () async {
+      await gateway.refreshToken();
+      expect(gateway.isLoggedIn, isTrue);
+    });
+
+    test('logout', () async {
+      await gateway.logout();
+      expect(gateway.isLoggedIn, isFalse);
+    });
+  });
 
   group('operations', () {
-//    var gateway = TonieGateway(jwt);
-
     test('get households', () async {
+      await gateway.login(email, password);
       var households = await gateway.getHouseholds();
       print(households);
       expect(gateway, isNotNull);
