@@ -16,13 +16,13 @@ class TonieGateway {
 
   final http.Client _client;
 
-  Token _token;
+  Token token;
 
-  bool get isLoggedIn => _token != null;
+  bool get isLoggedIn => token != null;
 
   TonieGateway(this.onTokenUpdated, String tokenJson)
       : _client = http.Client(),
-        _token = tokenJson != null && tokenJson.isNotEmpty
+        token = tokenJson != null && tokenJson.isNotEmpty
             ? Token.fromJson(tokenJson)
             : null;
 
@@ -32,7 +32,7 @@ class TonieGateway {
   Future<void> refreshToken() => _authenticate();
 
   void logout() {
-    _token = null;
+    token = null;
     onTokenUpdated(null);
   }
 
@@ -69,7 +69,7 @@ class TonieGateway {
         'client_id': 'my-tonies',
         if (isRefresh) ...{
           'grant_type': 'refresh_token',
-          'refresh_token': _token.refreshToken,
+          'refresh_token': token.refreshToken,
         },
         if (!isRefresh) ...{
           'grant_type': 'password',
@@ -86,30 +86,30 @@ class TonieGateway {
     }
 
     final map = jsonDecode(response.body);
-    final expiresIn = map['expires_in'] - (map['expires_in'] * 0.05).floor();
-    _token = Token(
+    final expiresIn = map['expires_in'] ~/ 1.05;
+    token = Token(
       map['access_token'],
       map['refresh_token'],
       DateTime.now().add(Duration(seconds: expiresIn)),
     );
 
-    onTokenUpdated(_token.toJson());
+    onTokenUpdated(token.toJson());
   }
 
-  dynamic _request(String method, String path,
+  Future<dynamic> _request(String method, String path,
       [Map<String, dynamic> body]) async {
     if (!isLoggedIn) {
       throw Exception('Logged out');
     }
 
-    if (_token.expired) {
+    if (token.isExpired) {
       await refreshToken();
     }
 
     var request = http.Request(method, Uri.parse('$apiUrl/$path'))
       ..headers.addAll({
         HttpHeaders.contentTypeHeader: 'application/json',
-        HttpHeaders.authorizationHeader: 'Bearer ${_token.accessToken}',
+        HttpHeaders.authorizationHeader: 'Bearer ${token.accessToken}',
       })
       ..body = jsonEncode(body);
     var response = await _client.send(request);
@@ -130,7 +130,7 @@ class Token {
   final String refreshToken;
   final DateTime expiry;
 
-  bool get expired => DateTime.now().isAfter(expiry);
+  bool get isExpired => DateTime.now().isAfter(expiry);
 
   Token(this.accessToken, this.refreshToken, this.expiry)
       : assert(accessToken != null),
